@@ -1,0 +1,29 @@
+# Environment & Secrets (DO NOT COMMIT SENSITIVE TOKENS)
+.env
+.env.local
+
+# SQLite Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Logs & temporary files
+*.log
+*.tmp
+*.zip
+
+# OS artifacts
+.DS_Store
+Thumbs.db
