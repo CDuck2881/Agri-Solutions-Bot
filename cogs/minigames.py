@@ -82,6 +82,21 @@ TRIVIA_QUESTIONS = [
     }
 ]
 
+async def enforce_minigames_channel(interaction: discord.Interaction, db) -> bool:
+    """Checks if minigames are restricted to a specific channel."""
+    if not interaction.guild or interaction.user.guild_permissions.administrator:
+        return True
+    settings = await db.get_server_settings(interaction.guild.id)
+    mg_ch_id = settings.get("minigames_channel_id")
+    if mg_ch_id and interaction.channel_id != mg_ch_id:
+        await interaction.response.send_message(
+            f"❌ Minigames are restricted to <#{mg_ch_id}>! Please head over there to play.",
+            ephemeral=True
+        )
+        return False
+    return True
+
+
 class TriviaView(discord.ui.View):
     def __init__(self, question_data: dict, user_id: int, db, guild_id: int):
         super().__init__(timeout=25.0)
@@ -125,8 +140,9 @@ class TriviaView(discord.ui.View):
             await self.db.update_quest_progress(self.user_id, self.guild_id, "trivia_done", 1)
 
             if is_correct:
-                reward_coins = 50
-                reward_xp = 35
+                settings = await self.db.get_server_settings(self.guild_id)
+                reward_coins = settings.get("trivia_coins", 50)
+                reward_xp = settings.get("trivia_xp", 35)
                 await self.db.add_coins(self.user_id, self.guild_id, reward_coins)
                 await self.db.add_xp(self.user_id, self.guild_id, reward_xp)
 
@@ -171,6 +187,9 @@ class Minigames(commands.Cog):
 
     @app_commands.command(name="farm", description="View your farm plots, growing crops, and machinery fleet.")
     async def farm_command(self, interaction: discord.Interaction):
+        if not await enforce_minigames_channel(interaction, self.db):
+            return
+
         user_id = interaction.user.id
         guild_id = interaction.guild.id
 
@@ -229,6 +248,9 @@ class Minigames(commands.Cog):
         app_commands.Choice(name="🥔 Potatoes (Cost: 120 | Grow time: 10m | Value: 320)", value="potato")
     ])
     async def plant_command(self, interaction: discord.Interaction, crop: app_commands.Choice[str]):
+        if not await enforce_minigames_channel(interaction, self.db):
+            return
+
         success, message = await self.db.plant_crop(interaction.user.id, interaction.guild.id, crop.value)
 
         if success:
@@ -244,6 +266,9 @@ class Minigames(commands.Cog):
 
     @app_commands.command(name="harvest", description="Harvest all ripe crops for Agri-Coins and XP.")
     async def harvest_command(self, interaction: discord.Interaction):
+        if not await enforce_minigames_channel(interaction, self.db):
+            return
+
         success, message, coins, xp = await self.db.harvest_crops(interaction.user.id, interaction.guild.id)
 
         if success:
@@ -259,6 +284,9 @@ class Minigames(commands.Cog):
 
     @app_commands.command(name="market", description="Check market prices for crops and machinery upgrades.")
     async def market_command(self, interaction: discord.Interaction):
+        if not await enforce_minigames_channel(interaction, self.db):
+            return
+
         embed = discord.Embed(
             title="🛒 Agri Solutions Group — Market & Prices",
             description="Overview of seed purchase costs, grow times, sell prices, and tractor upgrades.",
@@ -284,6 +312,9 @@ class Minigames(commands.Cog):
 
     @app_commands.command(name="upgrade", description="Upgrade your tractor for higher harvest yield multipliers.")
     async def upgrade_command(self, interaction: discord.Interaction):
+        if not await enforce_minigames_channel(interaction, self.db):
+            return
+
         success, message = await self.db.upgrade_tractor(interaction.user.id, interaction.guild.id)
 
         color = COLOR_SUCCESS if success else COLOR_ERROR
@@ -298,6 +329,9 @@ class Minigames(commands.Cog):
 
     @app_commands.command(name="trivia", description="Play the agricultural trivia quiz for coins and XP!")
     async def trivia_command(self, interaction: discord.Interaction):
+        if not await enforce_minigames_channel(interaction, self.db):
+            return
+
         q_data = random.choice(TRIVIA_QUESTIONS)
         view = TriviaView(q_data, interaction.user.id, self.db, interaction.guild.id)
 
@@ -323,6 +357,9 @@ class Minigames(commands.Cog):
         app_commands.Choice(name="🔵 New Holland Blue Beast", value="New Holland")
     ])
     async def tractor_race_command(self, interaction: discord.Interaction, bet: int, tractor: app_commands.Choice[str]):
+        if not await enforce_minigames_channel(interaction, self.db):
+            return
+
         if bet <= 0:
             await interaction.response.send_message("❌ Bet amount must be at least 1 Agri-Coin.", ephemeral=True)
             return
@@ -358,10 +395,12 @@ class Minigames(commands.Cog):
         user_won = (winner == chosen)
 
         if user_won:
-            winnings = bet * 3
+            settings = await self.db.get_server_settings(guild_id)
+            race_mult = settings.get("race_multiplier", 3.0)
+            winnings = int(bet * race_mult)
             await self.db.add_coins(interaction.user.id, guild_id, winnings)
             await self.db.add_xp(interaction.user.id, guild_id, 40)
-            result_text = f"🏆 **VICTORY!** Your **{chosen}** crossed the finish line first!\n💰 Payout: **+{winnings:,}** Agri-Coins (3x multiplier)!"
+            result_text = f"🏆 **VICTORY!** Your **{chosen}** crossed the finish line first!\n💰 Payout: **+{winnings:,}** Agri-Coins ({race_mult}x multiplier)!"
             result_color = COLOR_SUCCESS
         else:
             result_text = f"💥 **Defeat!** The winner is **{winner}**!\nYour **{chosen}** came up just short. Better luck next time!"
@@ -386,6 +425,9 @@ class Minigames(commands.Cog):
         app_commands.Choice(name="🪙 Tails", value="tails")
     ])
     async def coinflip_command(self, interaction: discord.Interaction, bet: int, choice: app_commands.Choice[str]):
+        if not await enforce_minigames_channel(interaction, self.db):
+            return
+
         if bet <= 0:
             await interaction.response.send_message("❌ Bet amount must be at least 1 Agri-Coin.", ephemeral=True)
             return
@@ -420,6 +462,8 @@ class Minigames(commands.Cog):
     @app_commands.command(name="dice", description="Roll a 6-sided die for 5x your bet!")
     @app_commands.describe(bet="Amount of Agri-Coins", number="Pick a number from 1 to 6")
     async def dice_command(self, interaction: discord.Interaction, bet: int, number: int):
+        if not await enforce_minigames_channel(interaction, self.db):
+            return
         if bet <= 0:
             await interaction.response.send_message("❌ Bet amount must be at least 1 Agri-Coin.", ephemeral=True)
             return

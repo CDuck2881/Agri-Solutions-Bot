@@ -40,6 +40,16 @@ A custom-built, feature-rich Discord bot designed specifically for **Agri Soluti
 * **`/bumpleaderboard`**: View top promoters.
 * **`/setbumpchannel` & `/setbumprole`**: *(Admin)* Fully customizable reminder channel and ping role.
 
+### 5. ⚙️ Minigame & Airdrop Full Control Panel
+* **`/minigamesettings`**: Live overview of all airdrop frequencies, rewards, winner spots, and minigame channel restrictions.
+* **`/setdropchannel [channel]`**: Select exactly which channel harvest airdrops and supply crates appear in (staff channels are strictly excluded).
+* **`/setdropinterval [minutes]`**: Set how frequently drops occur (e.g. 15, 30, 45, 60, 120 minutes).
+* **`/setdroprewards [min_coins] [max_coins] [min_xp] [max_xp] [spots]`**: Full customization of loot crate rewards.
+* **`/toggledrops [enabled]`**: Turn automatic airdrops on or off.
+* **`/setminigameschannel [channel]`**: Restrict all minigames (`/farm`, `/trivia`, `/tractor-race`, etc.) to a dedicated channel, or allow everywhere.
+* **`/setminigamerewards [trivia_coins] [trivia_xp] [race_multiplier]`**: Adjust payout multipliers.
+* **`/flashdrop`**: Spawn an instant harvest crate with custom rewards on command.
+
 ---
 
 ## 🚀 Setup & Hosting

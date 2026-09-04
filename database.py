@@ -94,13 +94,24 @@ class Database:
                 )
             """)
 
-            # Add stats & broadcast columns if not present
+            # Add stats, broadcast, and minigame customization columns if not present
             cols_to_add = [
                 ("stat_category_id", "INTEGER DEFAULT NULL"),
                 ("stat_members_channel_id", "INTEGER DEFAULT NULL"),
                 ("stat_online_channel_id", "INTEGER DEFAULT NULL"),
                 ("stat_goal_channel_id", "INTEGER DEFAULT NULL"),
                 ("broadcast_channel_id", "INTEGER DEFAULT NULL"),
+                ("drops_channel_id", "INTEGER DEFAULT NULL"),
+                ("drop_interval_minutes", "INTEGER DEFAULT 60"),
+                ("drop_min_coins", "INTEGER DEFAULT 75"),
+                ("drop_max_coins", "INTEGER DEFAULT 200"),
+                ("drop_min_xp", "INTEGER DEFAULT 40"),
+                ("drop_max_xp", "INTEGER DEFAULT 100"),
+                ("drop_spots", "INTEGER DEFAULT 3"),
+                ("minigames_channel_id", "INTEGER DEFAULT NULL"),
+                ("trivia_coins", "INTEGER DEFAULT 50"),
+                ("trivia_xp", "INTEGER DEFAULT 35"),
+                ("race_multiplier", "REAL DEFAULT 3.0"),
             ]
             for col_name, col_type in cols_to_add:
                 try:

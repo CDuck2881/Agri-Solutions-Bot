@@ -128,15 +128,32 @@ class Engagement(commands.Cog):
 
             settings = await self.db.get_server_settings(message.guild.id)
             if settings.get("drops_enabled", 1) == 1:
-                coins = random.randint(75, 180)
-                xp = random.randint(40, 90)
-                view = ClaimDropView(self.db, coins, xp, max_claims=3)
+                # Never drop in staff, admin, or private channels
+                ch_name = message.channel.name.lower()
+                excluded = ["staff", "admin", "mod", "private", "bot-log", "log", "ticket", "rules", "audit"]
+                if any(x in ch_name for x in excluded):
+                    return
+
+                # If a specific drop channel is configured, only drop there
+                configured_drop_ch = settings.get("drops_channel_id")
+                if configured_drop_ch and message.channel.id != configured_drop_ch:
+                    return
+
+                min_c = settings.get("drop_min_coins", 75)
+                max_c = settings.get("drop_max_coins", 180)
+                min_x = settings.get("drop_min_xp", 40)
+                max_x = settings.get("drop_max_xp", 90)
+                spots = settings.get("drop_spots", 3)
+
+                coins = random.randint(min_c, max(min_c, max_c))
+                xp = random.randint(min_x, max(min_x, max_x))
+                view = ClaimDropView(self.db, coins, xp, max_claims=spots)
 
                 embed = discord.Embed(
                     title="🌾 AIRDROP: Mystery Harvest Crate! 📦",
                     description=(
                         "A supply crate just dropped into the channel for active farmers!\n\n"
-                        "👉 **Click the button below fast to claim your reward (3 spots available)!**"
+                        f"👉 **Click the button below fast to claim your reward ({spots} spots available)!**"
                     ),
                     color=COLOR_GOLD
                 )
@@ -149,44 +166,71 @@ class Engagement(commands.Cog):
 
     # --- ⏰ PERIODIC AIRDROPS LOOP (Keeps chat moving even when quiet) ---
 
-    @tasks.loop(minutes=60)
+    @tasks.loop(minutes=5)
     async def periodic_airdrop_loop(self):
-        """Periodically drops a loot crate into a public text channel to spark activity."""
+        """Periodically drops a loot crate into the configured drops channel (never staff channels)."""
         try:
+            now = time.time()
             for guild in self.bot.guilds:
                 settings = await self.db.get_server_settings(guild.id)
                 if settings.get("drops_enabled", 1) != 1:
                     continue
 
-                # Find general or first sendable channel
-                target_channel = None
-                for ch in guild.text_channels:
-                    if "general" in ch.name.lower() or "chat" in ch.name.lower() or "main" in ch.name.lower():
-                        if ch.permissions_for(guild.me).send_messages:
-                            target_channel = ch
-                            break
+                interval = settings.get("drop_interval_minutes", 60) * 60
+                last_drop = getattr(self, f"_last_periodic_drop_{guild.id}", 0)
+                if now - last_drop < interval:
+                    continue
+                setattr(self, f"_last_periodic_drop_{guild.id}", now)
 
+                # 1. First priority: Configured drops channel
+                target_channel = None
+                configured_channel_id = settings.get("drops_channel_id")
+                if configured_channel_id:
+                    target_channel = guild.get_channel(configured_channel_id)
+
+                # 2. Second priority: Find public chat, strictly excluding staff/admin/private channels
                 if not target_channel:
+                    excluded_keywords = ["staff", "admin", "mod", "private", "bot-log", "log", "announcement", "welcome", "ticket", "rules", "audit", "team"]
                     for ch in guild.text_channels:
-                        if ch.permissions_for(guild.me).send_messages:
-                            target_channel = ch
-                            break
+                        ch_name = ch.name.lower()
+                        if any(k in ch_name for k in excluded_keywords):
+                            continue
+                        if ch.permissions_for(guild.me).send_messages and ch.permissions_for(guild.default_role).view_channel:
+                            if "general" in ch_name or "chat" in ch_name or "main" in ch_name or "lounge" in ch_name:
+                                target_channel = ch
+                                break
+
+                    # Fallback to any public text channel that is not staff/admin
+                    if not target_channel:
+                        for ch in guild.text_channels:
+                            ch_name = ch.name.lower()
+                            if any(k in ch_name for k in excluded_keywords):
+                                continue
+                            if ch.permissions_for(guild.me).send_messages and ch.permissions_for(guild.default_role).view_channel:
+                                target_channel = ch
+                                break
 
                 if target_channel:
-                    coins = random.randint(100, 250)
-                    xp = random.randint(50, 120)
-                    view = ClaimDropView(self.db, coins, xp, max_claims=3)
+                    min_c = settings.get("drop_min_coins", 100)
+                    max_c = settings.get("drop_max_coins", 250)
+                    min_x = settings.get("drop_min_xp", 50)
+                    max_x = settings.get("drop_max_xp", 120)
+                    spots = settings.get("drop_spots", 3)
+
+                    coins = random.randint(min_c, max(min_c, max_c))
+                    xp = random.randint(min_x, max(min_x, max_x))
+                    view = ClaimDropView(self.db, coins, xp, max_claims=spots)
 
                     embed = discord.Embed(
-                        title="🚜 HOURLY HARVEST SUPPLY DROP! 📦",
+                        title="🚜 HARVEST SUPPLY AIRDROP! 📦",
                         description=(
-                            "The Agri Solutions Group logistics truck just dropped a bonus crate!\n\n"
-                            "🎁 **3 Lucky Farmers** can claim **+100–250 Coins & XP** right now!\n"
-                            "👉 *Click the button below before it runs out!*"
+                            "The Agri Solutions Group logistics truck just dropped a bonus crate in the valley!\n\n"
+                            f"🎁 **{spots} Lucky Farmers** can claim **+{coins} Coins & +{xp} XP** right now!\n"
+                            "👉 *Click the button below before all spots are taken!*"
                         ),
                         color=COLOR_GOLD
                     )
-                    embed.set_footer(text="Agri Solutions Group • Hourly Community Airdrop")
+                    embed.set_footer(text="Agri Solutions Group • Community Airdrop")
                     await target_channel.send(embed=embed, view=view)
         except Exception as e:
             print(f"[Periodic Airdrop Error]: {e}")
@@ -403,6 +447,241 @@ class Engagement(commands.Cog):
         )
         embed.set_footer(text="Agri Solutions Group • Community Flash Event")
         await interaction.response.send_message(embed=embed, view=view)
+
+    # --- ⚙️ MINIGAME & AIRDROP CONFIGURATION COMMANDS ---
+
+    @app_commands.command(name="setdropchannel", description="[Admin] Set the dedicated channel where harvest airdrops and supply crates will appear.")
+    @app_commands.describe(channel="The channel for airdrops (leave empty to reset to automatic public chat)")
+    @app_commands.default_permissions(administrator=True)
+    async def setdropchannel_command(self, interaction: discord.Interaction, channel: Optional[discord.TextChannel] = None):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ Only administrators can configure drop channels.", ephemeral=True)
+            return
+
+        ch_id = channel.id if channel else None
+        await self.db.update_server_setting(interaction.guild.id, "drops_channel_id", ch_id)
+
+        if channel:
+            embed = create_embed(
+                title="✅ Airdrop Channel Updated",
+                description=f"All automatic harvest airdrops and chat crates will now appear exclusively in {channel.mention}!",
+                color=COLOR_SUCCESS
+            )
+        else:
+            embed = create_embed(
+                title="🔄 Airdrop Channel Reset",
+                description="Airdrops will now automatically appear in public general chat (staff channels are strictly excluded).",
+                color=COLOR_SUCCESS
+            )
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="setdropinterval", description="[Admin] Set how often automatic harvest airdrops appear (in minutes).")
+    @app_commands.describe(minutes="Interval between drops (e.g. 15, 30, 45, 60, 120)")
+    @app_commands.default_permissions(administrator=True)
+    async def setdropinterval_command(self, interaction: discord.Interaction, minutes: int):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ Only administrators can configure drop intervals.", ephemeral=True)
+            return
+
+        minutes = max(10, min(720, minutes))
+        await self.db.update_server_setting(interaction.guild.id, "drop_interval_minutes", minutes)
+
+        embed = create_embed(
+            title="⏱️ Drop Interval Updated",
+            description=f"Automatic harvest airdrops will now drop every **{minutes} minutes**!",
+            color=COLOR_SUCCESS
+        )
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="setdroprewards", description="[Admin] Customize the coin, XP rewards and winner spots for harvest drops.")
+    @app_commands.describe(
+        min_coins="Minimum coins per winner",
+        max_coins="Maximum coins per winner",
+        min_xp="Minimum XP per winner",
+        max_xp="Maximum XP per winner",
+        spots="Number of winners per crate (1-5)"
+    )
+    @app_commands.default_permissions(administrator=True)
+    async def setdroprewards_command(
+        self,
+        interaction: discord.Interaction,
+        min_coins: int = 100,
+        max_coins: int = 250,
+        min_xp: int = 50,
+        max_xp: int = 120,
+        spots: int = 3
+    ):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ Only administrators can configure drop rewards.", ephemeral=True)
+            return
+
+        spots = max(1, min(5, spots))
+        min_coins = max(10, min_coins)
+        max_coins = max(min_coins, max_coins)
+        min_xp = max(5, min_xp)
+        max_xp = max(min_xp, max_xp)
+
+        await self.db.update_server_setting(interaction.guild.id, "drop_min_coins", min_coins)
+        await self.db.update_server_setting(interaction.guild.id, "drop_max_coins", max_coins)
+        await self.db.update_server_setting(interaction.guild.id, "drop_min_xp", min_xp)
+        await self.db.update_server_setting(interaction.guild.id, "drop_max_xp", max_xp)
+        await self.db.update_server_setting(interaction.guild.id, "drop_spots", spots)
+
+        embed = create_embed(
+            title="🎁 Airdrop Rewards Updated",
+            description=(
+                f"• **Coins per Winner:** `{min_coins}` – `{max_coins}` 🪙\n"
+                f"• **XP per Winner:** `{min_xp}` – `{max_xp}` ⭐\n"
+                f"• **Winner Spots:** `{spots}` Farmers 👥"
+            ),
+            color=COLOR_SUCCESS
+        )
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="toggledrops", description="[Admin] Enable or disable automatic harvest airdrops.")
+    @app_commands.describe(enabled="True to enable airdrops, False to disable")
+    @app_commands.default_permissions(administrator=True)
+    async def toggledrops_command(self, interaction: discord.Interaction, enabled: bool):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ Only administrators can toggle airdrops.", ephemeral=True)
+            return
+
+        val = 1 if enabled else 0
+        await self.db.update_server_setting(interaction.guild.id, "drops_enabled", val)
+
+        state = "Enabled 🟢" if enabled else "Disabled 🔴"
+        embed = create_embed(
+            title=f"📦 Airdrops {state}",
+            description=f"Automatic harvest airdrops are now **{state}** for this server.",
+            color=COLOR_SUCCESS if enabled else COLOR_WARNING
+        )
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="setminigameschannel", description="[Admin] Restrict all minigames (/farm, /trivia, /tractor-race, etc.) to one channel.")
+    @app_commands.describe(channel="The channel for minigames (leave empty to allow in all channels)")
+    @app_commands.default_permissions(administrator=True)
+    async def setminigameschannel_command(self, interaction: discord.Interaction, channel: Optional[discord.TextChannel] = None):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ Only administrators can configure minigame channels.", ephemeral=True)
+            return
+
+        ch_id = channel.id if channel else None
+        await self.db.update_server_setting(interaction.guild.id, "minigames_channel_id", ch_id)
+
+        if channel:
+            embed = create_embed(
+                title="🎮 Minigames Channel Configured",
+                description=f"All minigames (`/farm`, `/trivia`, `/tractor-race`, `/coinflip`, `/dice`) are now restricted to {channel.mention}!",
+                color=COLOR_SUCCESS
+            )
+        else:
+            embed = create_embed(
+                title="🌐 Minigames Allowed Everywhere",
+                description="Members can now play minigames in all text channels where the bot has permission.",
+                color=COLOR_SUCCESS
+            )
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="setminigamerewards", description="[Admin] Adjust payout and XP multipliers for trivia and tractor racing.")
+    @app_commands.describe(
+        trivia_coins="Coins awarded for correct trivia answer",
+        trivia_xp="XP awarded for correct trivia answer",
+        race_multiplier="Payout multiplier for winning tractor race (e.g. 2.5 or 3.0)"
+    )
+    @app_commands.default_permissions(administrator=True)
+    async def setminigamerewards_command(
+        self,
+        interaction: discord.Interaction,
+        trivia_coins: int = 50,
+        trivia_xp: int = 35,
+        race_multiplier: float = 3.0
+    ):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ Only administrators can adjust minigame rewards.", ephemeral=True)
+            return
+
+        race_multiplier = max(1.5, min(10.0, race_multiplier))
+        await self.db.update_server_setting(interaction.guild.id, "trivia_coins", trivia_coins)
+        await self.db.update_server_setting(interaction.guild.id, "trivia_xp", trivia_xp)
+        await self.db.update_server_setting(interaction.guild.id, "race_multiplier", race_multiplier)
+
+        embed = create_embed(
+            title="🎮 Minigame Rewards Updated",
+            description=(
+                f"• **Trivia Win Prize:** `+{trivia_coins}` 🪙 & `+{trivia_xp}` ⭐\n"
+                f"• **Tractor Race Multiplier:** `{race_multiplier}x` payout!"
+            ),
+            color=COLOR_SUCCESS
+        )
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="minigamesettings", description="[Admin] View the full configuration dashboard for minigames and airdrops.")
+    @app_commands.default_permissions(administrator=True)
+    async def minigamesettings_command(self, interaction: discord.Interaction):
+        settings = await self.db.get_server_settings(interaction.guild.id)
+
+        # Drops channel
+        drop_ch_id = settings.get("drops_channel_id")
+        drop_ch_text = f"<#{drop_ch_id}>" if drop_ch_id else "*Auto (Public Chat, excluding Staff)*"
+
+        # Minigames channel
+        mg_ch_id = settings.get("minigames_channel_id")
+        mg_ch_text = f"<#{mg_ch_id}>" if mg_ch_id else "*Allowed in all channels*"
+
+        drops_enabled = "🟢 Enabled" if settings.get("drops_enabled", 1) == 1 else "🔴 Disabled"
+        interval = settings.get("drop_interval_minutes", 60)
+        min_c = settings.get("drop_min_coins", 100)
+        max_c = settings.get("drop_max_coins", 250)
+        min_x = settings.get("drop_min_xp", 50)
+        max_x = settings.get("drop_max_xp", 120)
+        spots = settings.get("drop_spots", 3)
+        t_coins = settings.get("trivia_coins", 50)
+        t_xp = settings.get("trivia_xp", 35)
+        race_mult = settings.get("race_multiplier", 3.0)
+
+        embed = discord.Embed(
+            title="⚙️ Agri Bot — Minigames & Airdrops Control Panel",
+            description="Manage and customize all community minigames and airdrop settings below:",
+            color=COLOR_PRIMARY
+        )
+
+        embed.add_field(
+            name="📦 Airdrop Settings",
+            value=(
+                f"• **Status:** {drops_enabled}\n"
+                f"• **Channel:** {drop_ch_text}\n"
+                f"• **Interval:** Every `{interval}` minutes\n"
+                f"• **Reward Range:** `{min_c}` – `{max_c}` 🪙 | `{min_x}` – `{max_x}` ⭐\n"
+                f"• **Winner Spots:** `{spots}` Farmers"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="🎮 Minigames Gameplay & Restrictions",
+            value=(
+                f"• **Minigames Channel:** {mg_ch_text}\n"
+                f"• **Trivia Win Prize:** `+{t_coins}` 🪙 | `+{t_xp}` ⭐\n"
+                f"• **Tractor Race Multiplier:** `{race_mult}x` Wager Payout"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="🛠️ Quick Configuration Commands",
+            value=(
+                "`/setdropchannel` • Set where airdrops drop\n"
+                "`/setdropinterval` • Change how often drops appear\n"
+                "`/setdroprewards` • Change coins/XP & winner spots\n"
+                "`/toggledrops` • Enable or disable drops\n"
+                "`/setminigameschannel` • Restrict minigames to a channel\n"
+                "`/setminigamerewards` • Customize trivia & race prizes\n"
+                "`/flashdrop` • Spawn instant test crate"
+            ),
+            inline=False
+        )
+        embed.set_footer(text="Agri Solutions Group • Admin Control Panel")
+        await interaction.response.send_message(embed=embed)
 
     # --- 📊 AUTO-UPDATING SERVER STATS CHANNELS ---
 
