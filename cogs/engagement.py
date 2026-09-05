@@ -43,6 +43,7 @@ class ClaimDropView(discord.ui.View):
         self.xp = xp
         self.max_claims = max_claims
         self.claimed_users = []
+        self.claimed_names = []
 
     @discord.ui.button(label="🌾 Claim Supply Crate! (0/3)", style=discord.ButtonStyle.success, emoji="📦")
     async def claim_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -55,6 +56,7 @@ class ClaimDropView(discord.ui.View):
             return
 
         self.claimed_users.append(interaction.user.id)
+        self.claimed_names.append(interaction.user.display_name)
         claims_count = len(self.claimed_users)
 
         await self.db.add_coins(interaction.user.id, interaction.guild.id, self.coins)
@@ -66,7 +68,7 @@ class ClaimDropView(discord.ui.View):
             button.style = discord.ButtonStyle.secondary
 
         embed = interaction.message.embeds[0] if interaction.message.embeds else discord.Embed(title="📦 Mystery Supply Crate", color=COLOR_GOLD)
-        claimers_text = "\n".join(f"• <@{uid}> (Prize: `+{self.coins}` 🪙 / `+{self.xp}` ⭐)" for uid in self.claimed_users)
+        claimers_text = "\n".join(f"• **{name}** (Prize: `+{self.coins}` 🪙 / `+{self.xp}` ⭐)" for name in self.claimed_names)
         
         status_text = "🎉 **All rewards claimed!**" if claims_count >= self.max_claims else f"⚡ **{self.max_claims - claims_count} spot(s) remaining! Click fast!**"
 

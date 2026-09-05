@@ -28,10 +28,19 @@ class AgriBot(commands.Bot):
         intents.members = True
         intents.guilds = True
 
+        # Disable all unwanted ghost pings / role / everyone / user mention notifications
+        allowed_mentions = discord.AllowedMentions(
+            everyone=False,
+            roles=False,
+            users=False,
+            replied_user=False
+        )
+
         super().__init__(
             command_prefix="!",
             intents=intents,
-            help_command=None
+            help_command=None,
+            allowed_mentions=allowed_mentions
         )
         self.db = Database()
 
