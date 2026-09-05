@@ -114,6 +114,7 @@ class Database:
                 ("race_multiplier", "REAL DEFAULT 3.0"),
                 ("levelup_channel_id", "INTEGER DEFAULT NULL"),
                 ("levelup_enabled", "INTEGER DEFAULT 1"),
+                ("last_drop_time", "INTEGER DEFAULT 0"),
             ]
             for col_name, col_type in cols_to_add:
                 try:

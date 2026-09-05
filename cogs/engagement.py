@@ -89,13 +89,11 @@ class ClaimDropView(discord.ui.View):
 
 
 class Engagement(commands.Cog):
-    """Engagement boosters: Random chat supply drops, QOTD, Quests, Voice XP, Stats Channels, and Broadcasts."""
+    """Engagement boosters: Periodic supply drops, QOTD, Quests, Voice XP, Stats Channels, and Broadcasts."""
 
     def __init__(self, bot):
         self.bot = bot
         self.db = bot.db
-        self.channel_message_counts: Dict[int, int] = {}
-        self.drop_thresholds: Dict[int, int] = {}
         self.voice_xp_loop.start()
         self.stats_updater_loop.start()
         self.periodic_airdrop_loop.start()
@@ -105,7 +103,7 @@ class Engagement(commands.Cog):
         self.stats_updater_loop.cancel()
         self.periodic_airdrop_loop.cancel()
 
-    # --- 🌾 RANDOM MYSTERY CHAT DROPS ---
+    # --- 🌾 DAILY QUEST PROGRESS LISTENER ---
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -115,59 +113,9 @@ class Engagement(commands.Cog):
         # Update Daily Quest message count
         await self.db.update_quest_progress(message.author.id, message.guild.id, "messages_count", 1)
 
-        channel_id = message.channel.id
-        current_count = self.channel_message_counts.get(channel_id, 0) + 1
-        self.channel_message_counts[channel_id] = current_count
+    # --- ⏰ PERIODIC AIRDROPS LOOP (Runs strictly on configured interval, default 60 min) ---
 
-        # Target threshold between 15 and 25 messages
-        threshold = self.drop_thresholds.get(channel_id)
-        if not threshold:
-            threshold = random.randint(15, 25)
-            self.drop_thresholds[channel_id] = threshold
-
-        if current_count >= threshold:
-            self.channel_message_counts[channel_id] = 0
-            self.drop_thresholds[channel_id] = random.randint(15, 25)
-
-            settings = await self.db.get_server_settings(message.guild.id)
-            if settings.get("drops_enabled", 1) == 1:
-                # Never drop in staff, admin, or private channels
-                if is_staff_or_private_channel(message.channel):
-                    return
-
-                # If a specific drop channel is configured, only drop there
-                configured_drop_ch = settings.get("drops_channel_id")
-                if configured_drop_ch and message.channel.id != configured_drop_ch:
-                    return
-
-                min_c = settings.get("drop_min_coins", 75)
-                max_c = settings.get("drop_max_coins", 180)
-                min_x = settings.get("drop_min_xp", 40)
-                max_x = settings.get("drop_max_xp", 90)
-                spots = settings.get("drop_spots", 3)
-
-                coins = random.randint(min_c, max(min_c, max_c))
-                xp = random.randint(min_x, max(min_x, max_x))
-                view = ClaimDropView(self.db, coins, xp, max_claims=spots)
-
-                embed = discord.Embed(
-                    title="🌾 AIRDROP: Mystery Harvest Crate! 📦",
-                    description=(
-                        "A supply crate just dropped into the channel for active farmers!\n\n"
-                        f"👉 **Click the button below fast to claim your reward ({spots} spots available)!**"
-                    ),
-                    color=COLOR_GOLD
-                )
-                embed.set_footer(text="Agri Solutions Group • Stay active to catch more drops!")
-
-                try:
-                    await message.channel.send(embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none())
-                except discord.HTTPException:
-                    pass
-
-    # --- ⏰ PERIODIC AIRDROPS LOOP (Keeps chat moving even when quiet) ---
-
-    @tasks.loop(minutes=5)
+    @tasks.loop(minutes=1)
     async def periodic_airdrop_loop(self):
         """Periodically drops a loot crate into the configured drops channel (never staff channels)."""
         try:
@@ -177,11 +125,17 @@ class Engagement(commands.Cog):
                 if settings.get("drops_enabled", 1) != 1:
                     continue
 
-                interval = settings.get("drop_interval_minutes", 60) * 60
-                last_drop = getattr(self, f"_last_periodic_drop_{guild.id}", 0)
-                if now - last_drop < interval:
+                interval_minutes = settings.get("drop_interval_minutes", 60)
+                interval_seconds = max(10, interval_minutes) * 60
+                last_drop = settings.get("last_drop_time", 0)
+
+                if last_drop == 0:
+                    # Initialize on first run: wait full interval before first drop
+                    await self.db.update_server_setting(guild.id, "last_drop_time", int(now))
                     continue
-                setattr(self, f"_last_periodic_drop_{guild.id}", now)
+
+                if now - last_drop < interval_seconds:
+                    continue
 
                 # 1. First priority: Configured drops channel
                 target_channel = None
@@ -212,6 +166,9 @@ class Engagement(commands.Cog):
                                 break
 
                 if target_channel and not is_staff_or_private_channel(target_channel):
+                    # Save persistent drop timestamp
+                    await self.db.update_server_setting(guild.id, "last_drop_time", int(now))
+
                     min_c = settings.get("drop_min_coins", 100)
                     max_c = settings.get("drop_max_coins", 250)
                     min_x = settings.get("drop_min_xp", 50)
