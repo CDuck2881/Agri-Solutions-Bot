@@ -190,13 +190,18 @@ class Engagement(commands.Cog):
 
                 # 2. Second priority: Find public chat, strictly excluding staff/admin/private channels
                 if not target_channel:
-                    excluded_keywords = ["staff", "admin", "mod", "private", "bot-log", "log", "announcement", "welcome", "ticket", "rules", "audit", "team"]
+                    excluded_keywords = ["staff", "admin", "mod", "private", "bot-log", "log", "announcement", "welcome", "ticket", "rules", "audit", "team", "management", "leiding", "owner"]
                     for ch in guild.text_channels:
                         ch_name = ch.name.lower()
+                        # Check channel name
                         if any(k in ch_name for k in excluded_keywords):
                             continue
-                        if ch.permissions_for(guild.me).send_messages and ch.permissions_for(guild.default_role).view_channel:
-                            if "general" in ch_name or "chat" in ch_name or "main" in ch_name or "lounge" in ch_name:
+                        # Check category name if channel is in a category
+                        if ch.category and any(k in ch.category.name.lower() for k in excluded_keywords):
+                            continue
+                        # Must have send messages permission and view channel permission
+                        if ch.permissions_for(guild.me).send_messages:
+                            if "general" in ch_name or "chat" in ch_name or "main" in ch_name or "lounge" in ch_name or "algemeen" in ch_name:
                                 target_channel = ch
                                 break
 
@@ -206,7 +211,9 @@ class Engagement(commands.Cog):
                             ch_name = ch.name.lower()
                             if any(k in ch_name for k in excluded_keywords):
                                 continue
-                            if ch.permissions_for(guild.me).send_messages and ch.permissions_for(guild.default_role).view_channel:
+                            if ch.category and any(k in ch.category.name.lower() for k in excluded_keywords):
+                                continue
+                            if ch.permissions_for(guild.me).send_messages:
                                 target_channel = ch
                                 break
 
