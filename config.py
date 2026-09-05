@@ -73,6 +73,28 @@ TRACTOR_UPGRADES = {
     4: {"name": "🚜 Agri-Titan Smart Harvester", "multiplier": 2.2, "cost": 7500},
 }
 
+def is_staff_or_private_channel(channel) -> bool:
+    """Returns True if the channel or its parent category belongs to staff, admin, or private areas."""
+    if not channel:
+        return True
+    
+    name = getattr(channel, "name", "").lower()
+    blocked = [
+        "staff", "admin", "mod", "private", "bot-log", "log", "announcement",
+        "welcome", "ticket", "rules", "audit", "team", "management", "leiding",
+        "owner", "secret", "internal", "dev", "moderator", "cmd", "command", "hidden"
+    ]
+    if any(b in name for b in blocked):
+        return True
+        
+    category = getattr(channel, "category", None)
+    if category:
+        cat_name = category.name.lower()
+        if any(b in cat_name for b in blocked):
+            return True
+            
+    return False
+
 def create_embed(
     title: str,
     description: str = "",

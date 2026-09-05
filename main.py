@@ -17,7 +17,8 @@ from config import (
     GUILD_ID,
     COLOR_PRIMARY,
     LOGO_PATH,
-    create_embed
+    create_embed,
+    is_staff_or_private_channel
 )
 from database import Database
 
@@ -126,10 +127,13 @@ class AgriBot(commands.Bot):
         channel_id = settings.get("welcome_channel_id")
 
         channel = guild.get_channel(channel_id) if channel_id else guild.system_channel
-        if not channel:
-            channel = next((c for c in guild.text_channels if c.permissions_for(guild.me).send_messages), None)
+        if not channel or is_staff_or_private_channel(channel):
+            channel = next(
+                (c for c in guild.text_channels if c.permissions_for(guild.me).send_messages and not is_staff_or_private_channel(c)),
+                None
+            )
 
-        if channel:
+        if channel and not is_staff_or_private_channel(channel):
             embed = discord.Embed(
                 title=f"🌱 Welcome to Agri Solutions Group, {member.display_name}!",
                 description=(

@@ -13,7 +13,8 @@ from config import (
     COLOR_SUCCESS,
     COLOR_WARNING,
     COLOR_ERROR,
-    create_embed
+    create_embed,
+    is_staff_or_private_channel
 )
 
 # Bank of 25+ engaging Questions of the Day (QOTD)
@@ -131,9 +132,7 @@ class Engagement(commands.Cog):
             settings = await self.db.get_server_settings(message.guild.id)
             if settings.get("drops_enabled", 1) == 1:
                 # Never drop in staff, admin, or private channels
-                ch_name = message.channel.name.lower()
-                excluded = ["staff", "admin", "mod", "private", "bot-log", "log", "ticket", "rules", "audit"]
-                if any(x in ch_name for x in excluded):
+                if is_staff_or_private_channel(message.channel):
                     return
 
                 # If a specific drop channel is configured, only drop there
@@ -162,7 +161,7 @@ class Engagement(commands.Cog):
                 embed.set_footer(text="Agri Solutions Group • Stay active to catch more drops!")
 
                 try:
-                    await message.channel.send(embed=embed, view=view)
+                    await message.channel.send(embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none())
                 except discord.HTTPException:
                     pass
 
@@ -188,21 +187,17 @@ class Engagement(commands.Cog):
                 target_channel = None
                 configured_channel_id = settings.get("drops_channel_id")
                 if configured_channel_id:
-                    target_channel = guild.get_channel(configured_channel_id)
+                    ch = guild.get_channel(configured_channel_id)
+                    if ch and not is_staff_or_private_channel(ch):
+                        target_channel = ch
 
                 # 2. Second priority: Find public chat, strictly excluding staff/admin/private channels
                 if not target_channel:
-                    excluded_keywords = ["staff", "admin", "mod", "private", "bot-log", "log", "announcement", "welcome", "ticket", "rules", "audit", "team", "management", "leiding", "owner"]
                     for ch in guild.text_channels:
-                        ch_name = ch.name.lower()
-                        # Check channel name
-                        if any(k in ch_name for k in excluded_keywords):
+                        if is_staff_or_private_channel(ch):
                             continue
-                        # Check category name if channel is in a category
-                        if ch.category and any(k in ch.category.name.lower() for k in excluded_keywords):
-                            continue
-                        # Must have send messages permission and view channel permission
                         if ch.permissions_for(guild.me).send_messages:
+                            ch_name = ch.name.lower()
                             if "general" in ch_name or "chat" in ch_name or "main" in ch_name or "lounge" in ch_name or "algemeen" in ch_name:
                                 target_channel = ch
                                 break
@@ -210,16 +205,13 @@ class Engagement(commands.Cog):
                     # Fallback to any public text channel that is not staff/admin
                     if not target_channel:
                         for ch in guild.text_channels:
-                            ch_name = ch.name.lower()
-                            if any(k in ch_name for k in excluded_keywords):
-                                continue
-                            if ch.category and any(k in ch.category.name.lower() for k in excluded_keywords):
+                            if is_staff_or_private_channel(ch):
                                 continue
                             if ch.permissions_for(guild.me).send_messages:
                                 target_channel = ch
                                 break
 
-                if target_channel:
+                if target_channel and not is_staff_or_private_channel(target_channel):
                     min_c = settings.get("drop_min_coins", 100)
                     max_c = settings.get("drop_max_coins", 250)
                     min_x = settings.get("drop_min_xp", 50)
@@ -240,7 +232,7 @@ class Engagement(commands.Cog):
                         color=COLOR_GOLD
                     )
                     embed.set_footer(text="Agri Solutions Group • Hourly Community Airdrop")
-                    await target_channel.send(embed=embed, view=view)
+                    await target_channel.send(embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none())
         except Exception as e:
             print(f"[Periodic Airdrop Error]: {e}")
 

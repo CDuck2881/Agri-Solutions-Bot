@@ -13,7 +13,8 @@ from config import (
     BUMP_REWARD_COINS,
     BUMP_REWARD_XP,
     BUMP_COOLDOWN_SECONDS,
-    create_embed
+    create_embed,
+    is_staff_or_private_channel
 )
 
 class Bump(commands.Cog):
@@ -41,10 +42,10 @@ class Bump(commands.Cog):
                 channel_id = server_data.get("bump_channel_id")
                 channel = guild.get_channel(channel_id) if channel_id else None
 
-                # Fallback to system channel or first readable channel
-                if not channel:
-                    channel = guild.system_channel or next(
-                        (c for c in guild.text_channels if c.permissions_for(guild.me).send_messages),
+                # Fallback to public channel (never staff channels)
+                if not channel or is_staff_or_private_channel(channel):
+                    channel = next(
+                        (c for c in guild.text_channels if c.permissions_for(guild.me).send_messages and not is_staff_or_private_channel(c)),
                         None
                     )
 
