@@ -112,6 +112,8 @@ class Database:
                 ("trivia_coins", "INTEGER DEFAULT 50"),
                 ("trivia_xp", "INTEGER DEFAULT 35"),
                 ("race_multiplier", "REAL DEFAULT 3.0"),
+                ("levelup_channel_id", "INTEGER DEFAULT NULL"),
+                ("levelup_enabled", "INTEGER DEFAULT 1"),
             ]
             for col_name, col_type in cols_to_add:
                 try:
@@ -346,11 +348,10 @@ class Database:
         async with aiosqlite.connect(self.db_path) as db:
             placeholders = ",".join("?" for _ in ready_ids)
             await db.execute(f"DELETE FROM farms WHERE id IN ({placeholders})", ready_ids)
-            await db.execute(
-                "UPDATE users SET coins = coins + ?, xp = xp + ? WHERE user_id = ? AND guild_id = ?",
-                (total_coins, total_xp, user_id, guild_id)
-            )
             await db.commit()
+
+        await self.add_coins(user_id, guild_id, total_coins)
+        await self.add_xp(user_id, guild_id, total_xp)
 
         msg = (
             f"🌾 **Harvest Successful!**\n\n"

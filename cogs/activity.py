@@ -43,6 +43,7 @@ class Activity(commands.Cog):
         self.bot = bot
         self.db = bot.db
         self.xp_cooldowns = {} # (user_id, guild_id) -> last_timestamp
+        self.last_announced_levels = {} # (user_id, guild_id) -> last_announced_level
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -72,36 +73,51 @@ class Activity(commands.Cog):
                             except discord.HTTPException:
                                 pass
 
-            if leveled_up:
+            # Prevent duplicate / spam announcements: Only announce each level ONCE
+            last_announced = self.last_announced_levels.get((user_id, guild_id), 0)
+            if leveled_up and new_lvl > last_announced:
+                self.last_announced_levels[(user_id, guild_id)] = new_lvl
+
                 bonus_coins = new_lvl * 50
                 await self.db.add_coins(user_id, guild_id, bonus_coins)
                 title = get_agri_title(new_lvl)
 
-                # Check if this specific level unlocked a new role
-                role_awarded_text = ""
-                for lr in level_roles:
-                    if lr["level"] == new_lvl:
-                        role = message.guild.get_role(lr["role_id"])
-                        if role:
-                            role_awarded_text = f"\n🎭 **Unlocked Role:** {role.mention}"
+                # Check if level-up announcements are enabled
+                settings = await self.db.get_server_settings(guild_id)
+                if settings.get("levelup_enabled", 1) == 1:
+                    # Check if a dedicated level-up channel is configured
+                    target_ch = message.channel
+                    configured_ch_id = settings.get("levelup_channel_id")
+                    if configured_ch_id:
+                        ch = message.guild.get_channel(configured_ch_id)
+                        if ch and ch.permissions_for(message.guild.me).send_messages:
+                            target_ch = ch
 
-                embed = discord.Embed(
-                    title="🎉 LEVEL UP! 🎉",
-                    description=(
-                        f"Congratulations {message.author.mention}! You reached **Level {new_lvl}**!\n\n"
-                        f"🏷️ **New Title:** `{title}`\n"
-                        f"💰 **Level-up Bonus:** `+{bonus_coins}` Agri-Coins{role_awarded_text}"
-                    ),
-                    color=COLOR_GOLD
-                )
-                if message.author.display_avatar:
-                    embed.set_thumbnail(url=message.author.display_avatar.url)
-                embed.set_footer(text="Agri Solutions Group • Stay active to earn more rewards!")
+                    # Check if this specific level unlocked a new role
+                    role_awarded_text = ""
+                    for lr in level_roles:
+                        if lr["level"] == new_lvl:
+                            role = message.guild.get_role(lr["role_id"])
+                            if role:
+                                role_awarded_text = f"\n🎭 **Unlocked Role:** {role.mention}"
 
-                try:
-                    await message.channel.send(embed=embed)
-                except discord.HTTPException:
-                    pass
+                    embed = discord.Embed(
+                        title="🎉 LEVEL UP! 🎉",
+                        description=(
+                            f"Congratulations **{message.author.display_name}**! You reached **Level {new_lvl}**!\n\n"
+                            f"🏷️ **New Title:** `{title}`\n"
+                            f"💰 **Level-up Bonus:** `+{bonus_coins}` Agri-Coins{role_awarded_text}"
+                        ),
+                        color=COLOR_GOLD
+                    )
+                    if message.author.display_avatar:
+                        embed.set_thumbnail(url=message.author.display_avatar.url)
+                    embed.set_footer(text="Agri Solutions Group • Stay active to earn more rewards!")
+
+                    try:
+                        await target_ch.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+                    except discord.HTTPException:
+                        pass
 
     @app_commands.command(name="rank", description="View your rank, level, XP progression, and statistics.")
     @app_commands.describe(member="The member whose profile you want to view (defaults to yourself)")
@@ -291,6 +307,50 @@ class Activity(commands.Cog):
             )
 
         await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @app_commands.command(name="setlevelupchannel", description="[Admin] Set a specific channel where level-up messages are posted.")
+    @app_commands.describe(channel="The channel for level-up announcements (leave empty to post in the active chat)")
+    @app_commands.default_permissions(administrator=True)
+    async def setlevelupchannel_command(self, interaction: discord.Interaction, channel: Optional[discord.TextChannel] = None):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ Only administrators can configure level-up channels.", ephemeral=True)
+            return
+
+        ch_id = channel.id if channel else None
+        await self.db.update_server_setting(interaction.guild.id, "levelup_channel_id", ch_id)
+
+        if channel:
+            embed = create_embed(
+                title="✅ Level-Up Channel Configured",
+                description=f"Level-up celebration cards will now be posted in {channel.mention}!",
+                color=COLOR_SUCCESS
+            )
+        else:
+            embed = create_embed(
+                title="🔄 Level-Up Channel Reset",
+                description="Level-up cards will now be posted in whichever channel the member reaches their new level.",
+                color=COLOR_SUCCESS
+            )
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="togglelevelup", description="[Admin] Enable or disable level-up announcement messages.")
+    @app_commands.describe(enabled="True to show level-up messages, False to silence them (roles still granted)")
+    @app_commands.default_permissions(administrator=True)
+    async def togglelevelup_command(self, interaction: discord.Interaction, enabled: bool):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ Only administrators can toggle level-up announcements.", ephemeral=True)
+            return
+
+        val = 1 if enabled else 0
+        await self.db.update_server_setting(interaction.guild.id, "levelup_enabled", val)
+
+        state = "Enabled 🟢" if enabled else "Silenced 🔴"
+        embed = create_embed(
+            title=f"🎉 Level-Up Messages {state}",
+            description=f"Level-up celebration messages are now **{state}** (level roles & coins are always granted).",
+            color=COLOR_SUCCESS if enabled else COLOR_WARNING
+        )
+        await interaction.response.send_message(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(Activity(bot))

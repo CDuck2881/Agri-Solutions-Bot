@@ -23,6 +23,8 @@ A custom-built, feature-rich Discord bot designed specifically for **Agri Soluti
 * **`/leaderboard`**: Live rankings for XP, Wealth (Coins), Disboard Bumps, and Counting Contributions.
 * **`/daily`**: Daily login rewards with an increasing streak multiplier.
 * **`/pay`**: Transfer Agri-Coins to other members.
+* **`/setlevelupchannel [channel]`**: *(Admin)* Route level-up celebrations to a specific channel (or active chat).
+* **`/togglelevelup [enabled]`**: *(Admin)* Toggle level-up announcement cards on or off.
 * **Welcome Embeds**: Automatic welcome cards branded with the Agri Solutions Group logo for new members.
 
 ### 3. 🔢 Counting Minigame
