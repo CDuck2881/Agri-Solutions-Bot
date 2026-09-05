@@ -229,15 +229,15 @@ class Engagement(commands.Cog):
                     view = ClaimDropView(self.db, coins, xp, max_claims=spots)
 
                     embed = discord.Embed(
-                        title="🚜 HARVEST SUPPLY AIRDROP! 📦",
+                        title="🚜 HOURLY HARVEST SUPPLY DROP! 📦",
                         description=(
-                            "The Agri Solutions Group logistics truck just dropped a bonus crate in the valley!\n\n"
+                            "The Agri Solutions Group logistics truck just dropped a bonus crate!\n\n"
                             f"🎁 **{spots} Lucky Farmers** can claim **+{coins} Coins & +{xp} XP** right now!\n"
-                            "👉 *Click the button below before all spots are taken!*"
+                            "👉 *Click the button below before it runs out!*"
                         ),
                         color=COLOR_GOLD
                     )
-                    embed.set_footer(text="Agri Solutions Group • Community Airdrop")
+                    embed.set_footer(text="Agri Solutions Group • Hourly Community Airdrop")
                     await target_channel.send(embed=embed, view=view)
         except Exception as e:
             print(f"[Periodic Airdrop Error]: {e}")
